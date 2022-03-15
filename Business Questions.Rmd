@@ -1,0 +1,387 @@
+---
+title: "H1b Business Analysis"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+always_allow_html: yes
+---
+**Data preprocessing :** We followed these steps of discovering, structuring, cleaning, and enriching the data in our data preprocessing steps.
+
+1) Discovering : Although we found a lot of similar datasets related to H1B Visa filing on websites like Kaggle, all these datasets were from the US Department of Labor and cleaned by the data set owners. We decided on using the source of the data sets to extract relevant data and preprocess it make it relevant to the project. We discovered that the data set we selected basically provides us information about the salaries of the filed applications, location of the filed applications, date of filing etc.
+In the data discovery phase, we also do the following exploration:
+
+```{r}
+new_df <- read.csv("LCA_Disclosure_Data_FY2021_Q3.csv")
+pre_cleaning_df <- colnames(new_df)
+pre_cleaning_df
+```
+As evident, there are a lot of unwanted column names for our business questions and we would ideally want to filter them. This leads us to the following step.
+
+2)Structuring : We selected the relevant features for our business problems as shown in our pre-processing file and removed relevant features with a dearth of data points (null values prevalent) .
+
+```{r}
+df <- read.csv("h1b_1.csv")
+post_cleaning_df <- colnames(df)
+post_cleaning_df
+df
+```
+
+3)Cleaning : We carried out spell check by using probabilistic models to correct state and city spellings. Made all the job positions,company names,city names of the same letter case in order to avoid repetition. Removed null value data points and substituted null values wherever necessary with appropriate values.
+
+```{r}
+new_df %>%filter(WORKSITE_CITY=="New York" | WORKSITE_CITY=="New Yrok" | WORKSITE_CITY=="NEW YORK" | WORKSITE_CITY=="New York ") %>%
+group_by(WORKSITE_CITY) %>%
+summarise(COUNT=n()) %>%
+arrange(desc(COUNT)) -> l
+
+l 
+```
+
+
+4) Enriching :  We ended up enriching the data by making the new salary column which had all salaries converted to yearly. (The original data set had salaries in the form of Bi-weekly, monthly, hourly etc.)
+
+```{r}
+
+#The unit of pay conversion to yearly pay 
+unique(new_df$PW_UNIT_OF_PAY) 
+
+```
+
+
+Below we have attached a few instances of data cleaning. For further reference please check the preprocessing file for further understanding:
+
+
+```{r}
+library(ggplot2)
+new_df <- read.csv("LCA_Disclosure_Data_FY2021_Q3.csv")
+new_df %>%    
+  filter(FULL_TIME_POSITION == 'Y') %>%
+  group_by(ORIGINAL_CERT_DATE) %>%
+  summarise(COUNT = n()) %>%
+  arrange(desc(COUNT)) -> na_orig_date
+ 
+orig_date_graph <- ggplot(na_orig_date[1:10,], aes(x=reorder(ORIGINAL_CERT_DATE,COUNT),y=COUNT)) +
+    geom_bar(stat = "identity", fill = "Blue") + coord_flip() +
+    xlab("Orignal_Cert_date") + ylab("No. Applications") + get_theme() + scale_color_discrete()
+
+orig_date_graph
+```
+
+
+```{r}
+
+new_df %>%    
+  filter(FULL_TIME_POSITION == 'Y') %>%
+  group_by(EMPLOYER_PROVINCE) %>%
+  summarise(COUNT = n()) %>%
+  arrange(desc(COUNT)) -> na_empl_province
+ 
+na_prov <- ggplot(na_empl_province[1:10,], aes(x=reorder(EMPLOYER_PROVINCE,COUNT),y=COUNT)) +
+    geom_bar(stat = "identity", fill = "Orange") + coord_flip() +
+    xlab("Employer_Province") + ylab("No. Applications") + get_theme() + scale_color_discrete()
+
+na_prov
+```
+
+Without data cleaning, as we can see our data points of interest, which are Date and Province are very skewed with too many N/A and None values.
+The following graphs address this particular issue.
+  1) The first graph shows how much effect N/A has on the Date field. The Original Certificate Date will not be a         good indicator given how many Null and N/A values exist. This is the reason we chose the **Decision Date             field**.
+  2) The second graph shows how varied the provinces are in the dataset. As we can see in the below graph, Apart from      N/A values there are a lot of human error based values such as n/a and none. Since the state/province is a very      rich field for our business cases, such kind of values will have a negative effect on our business questions.        Thus, we chose the **WORKSITE_STATE** field and made the necessary changes.
+
+
+
+ **Business Problems:**  We are going to look at business questions from the perspective of a H1b visa aspirant. We cover a variety of questions like which employers should they be looking to work for to get a visa sponsorship? , what roles should they be looking for based on visa sponsorship? , the salary he should expect for these roles? The regions where they are most likely to find opening for these roles etc.
+
+**1 Which are the most prominent employers sponsoring H1b applications?**
+
+Code:
+
+```{r}
+#import libraries
+library(ggplot2)
+source("Usefull_functions.R")
+
+#read cleaned dataset
+df<- read.csv("h1b_1.csv")
+
+df %>%
+  filter(FULL_TIME_POSITION == 'Y') %>%
+  group_by(EMPLOYER_NAME) %>%
+  summarise(COUNT = n()) %>%
+  arrange(desc(COUNT)) -> common_jobs
+
+top_employers <- ggplot(common_jobs[1:15,], aes(x=reorder(EMPLOYER_NAME,COUNT),y=COUNT)) +
+  geom_bar(stat = "identity", fill = "Blue") + coord_flip() +
+  xlab("Top Employers") + ylab("No. Applications") + get_theme() + scale_color_discrete()
+
+top_employers
+
+```
+
+**Conclusion : As you can see apart from the technology giants such as Apple inc, Amazon, Google. Software and IT service companies such as Tata Consultancy Services, Cognizant Technology solutions, Infosys Limited are the major employer group sponsoring H1b visas to perform software and It services of other companies in the United states of america. An aspirant is more likely to get H1b visa sponsorship if they apply to the above mentioned tech giants or the IT service companies as they sponsor the most amount of visas.**
+
+**2 What are the most common roles that employers apply for an H1-B visa application??**
+
+Code:
+
+```{r}
+
+top_employers <- unlist(find_top(df,"EMPLOYER_NAME","TotalApps",Ntop = 5))
+
+df %>%
+  filter(FULL_TIME_POSITION == 'Y') %>%
+  group_by(JOB_TITLE) %>%
+  summarise(COUNT = n()) %>%
+  arrange(desc(COUNT)) -> common_jobs
+
+Job_title <- ggplot(common_jobs[1:15,], aes(x=reorder(JOB_TITLE,COUNT),y=COUNT)) +
+  geom_bar(stat = "identity", fill = "Blue") + coord_flip() +
+  xlab("Job Title") + ylab("No. Applications") + get_theme() + scale_color_discrete()
+
+Job_title
+
+```
+**Conclusion : The most common roles for which employers sponsor an H1b Visa applicants are in the software industry with the highest number of applications being filed for software engineer or software developer roles. Applicants for Data Scientist and data engineering roles are still comparetively quite less as compared to the core software roles. Hence, an H1b visa aspirant is more likely to get visa sponsorship from employers  if they apply for roles pertaining to software.**  
+
+
+
+**3 What salaries should an applicant expect for these common roles?**
+
+Code:
+
+```{r}
+df %>%
+  filter(FULL_TIME_POSITION == 'Y') %>%
+  group_by(JOB_TITLE) %>%
+  summarise(COUNT = n()) %>%
+  arrange(desc(COUNT)) -> common_jobs
+
+df%>%
+  filter(JOB_TITLE %in% unlist(common_jobs$JOB_TITLE[1:10])) %>%
+  group_by(JOB_TITLE) -> job_wages_df
+
+salary <- ggplot(job_wages_df, aes(x=reorder(JOB_TITLE,PREVAILING_WAGE,median),y=PREVAILING_WAGE)) +
+  geom_boxplot(fill="Blue") + xlab("Job Title") + ylab("Salary in Dollars") +
+  get_theme() + coord_flip(ylim=c(0,150000))
+
+salary
+
+
+```
+**Conclusion : As you can see the median wages for the software engineering roles in the industry is one of the highest and is north of a $100,000 with distribution being even more skewed towards the higher end of wages, especially for Senior software engineering roles. The median wage for roles in the upcoming domain of data seems to be high for specialized roles such as data engineer or data scientist. Data engineers make a salary north of 100k dollars according to our filing records. The visualization of wages helps us understand  that the applicants applying for business analyst or other analyst roles in the data domain seems to get paid less as compared to more specialized roles such as data scientist or data engineer in the same domain. So if an aspirant is currently looking to develop skills pertaining to a particular industry to increase his earning potential the most he should be focusing more on the software sector.**    
+
+
+**4 Describe in detail wage distribution of applicants applying for beginner jobs in the data domain?**
+
+Code:
+
+```{r}
+
+h1 <- plot_ly(x=df$PREVAILING_WAGE[df$JOB_TITLE == "data engineer"], type='histogram' 
+              ,nbinsx=100, color = "", colors = c("Green"), name="Data Engineer")
+h2 <- plot_ly(x=df$PREVAILING_WAGE[df$JOB_TITLE == "data scientist"], type='histogram' 
+              ,nbinsx=100, color = "", colors = c("Red"), name="Data Scientist")
+h3 <- plot_ly(x=df$PREVAILING_WAGE[df$JOB_TITLE == "data analyst"], type='histogram' 
+              ,nbinsx=100, color = "", colors = c("Orange"), name="Data Analyst")
+
+Dist_Sal <- subplot(nrows=2,h1,h2,h3) %>% layout(title = "Distribution of Salaries ")
+Dist_Sal
+
+```
+**Conclusion : The question analyzes the salary distribution  of applicants of the data science and analytics domain for beginner level data domain roles. This analysis will help an H1b aspirants aiming for data science/ analytics understand the industry standards for these roles and what skills should he focus on to get paid more. The range of wages for specialized roles such as data scientist or data engineer can vary from as low as 50k to as high as 150k. But, majority of wages for these specialized role lie in the region of 80-120k. In case of data analyst roles the story is different, the distribution of the wages is mostly concentrated in the 60-80k region with a few outliers going above a 100k salary. This helps us assert the fact that applicants with more specialized roles requiring skills like machine learning,database management etc. get paid more.** 
+
+**Describe the distribution of applicants based on the status of their application?**
+
+Code:
+
+```{r}
+plot_ly(df, labels = ~names(table(df$CASE_STATUS)), 
+values = ~table(df$CASE_STATUS), type = 'pie',
+textposition = 'inside',textinfo = 'label+percent') %>% 
+layout(title = "Status of Applications",
+xaxis = list(showgrid = FALSE,
+zeroline = FALSE, 
+showticklabels = FALSE),
+yaxis = list(showgrid = FALSE,
+zeroline = FALSE, showticklabels = FALSE))
+
+
+```
+**Conclusion : A certified Labor Condition Application, is a prerequisite to H1B approval. According to the data amongst the selected applicants for H1b visa 93.9% were certified i.e. their visa was approved for further processing, about 3.56% applicants had their visa application certified and withdrawn, this happens mostly when the employer terminates the job of the applicant and .5 % of the selected applicants were rejected due to certain issues in the applications. This shows that majority of H1b visa applications are genuine and pass through the scrutiny of the United States government. Hence, generally if a company is willing to sponsor a H1b visa for an aspirant he or she may not be worried about the legal standing/ authenticity of the application made by the company.**
+
+
+
+
+**6 Understanding the visa application denial based on the distribution of wages for applicants whose applications were either withdrawn,denied or certified and later withdrawn?**
+
+Code:
+
+```{r}
+h1 <- plot_ly(x=df$PREVAILING_WAGE[df$CASE_STATUS == "Denied"], type='histogram' ,nbinsx=100,
+              color = "", colors = c("Red"), name="Denied")
+h2 <- plot_ly(x=df$PREVAILING_WAGE[df$CASE_STATUS == "Certified - Withdrawn"], type='histogram' 
+              ,nbinsx=100,color = "", colors = c("Orange"), name="Certified-Withdrawn")
+h3 <- plot_ly(x=df$PREVAILING_WAGE[df$CASE_STATUS == "Withdrawn"], type='histogram' ,nbinsx=100,
+              color = "", colors = c("Black"), name="Withdrawn")
+
+Distribution <- subplot(nrows=1,h1,h2,h3) %>% layout(title = "Distribution of Salaries ")
+Distribution
+
+```
+**Conclusion : Most of the denied applications tend to have salaries lower than 100k dollars as shown by our distribution compared to other status distribution. Lower salary basically stands out as a red flag and an H1b aspirant should avoid applying for roles offering very low salary based on the data. These roles have a higher rate of denials and maybe spurious.**
+
+**Q7) Describe the distribution of H1b filings based on states?**
+
+Code:
+
+```{r}
+
+
+plot_ly(df, labels = ~names(table(df$WORKSITE_STATE)), 
+values = ~table(df$WORKSITE_STATE), type = 'pie',
+textposition = 'inside',textinfo = 'label+percent') %>%
+layout(title = "State Wise job distribution",
+xaxis = list(showgrid = TRUE, zeroline = FALSE, showticklabels = FALSE),
+yaxis = list(showgrid = FALSE,
+zeroline = FALSE, showticklabels = FALSE))
+
+```
+**Conclusion : As we can affirm from our results, the highest number of applications  are from the sate of California(21.2%),followed by Texas (11.1%) and New York(8.21%). About fifty percent of all filings took place in the top five states. The rest of the forty five states are responsible for the remaining fifty percent of filings with some of the  smaller states such as Wisconsin, Utah etc. having a contribution of less than one percent to the total h1b applications. An H1b aspirant should keep their job search more focused on**  
+
+
+**8 The states where applicants will be paid the comapertively salaries amongst the states with highest filings?** 
+
+Code:
+
+```{r}
+#import library
+library(plotly)
+
+#read cleaned dataset
+df<- read.csv("h1b_1.csv")
+
+df %>%
+  group_by(WORKSITE_STATE) %>%
+  summarise(COUNT = n()) %>%
+  arrange(desc(COUNT)) -> state_wise_count
+
+df%>%
+  filter(WORKSITE_STATE %in% unlist(state_wise_count$WORKSITE_STATE[1:5])) %>% 
+  group_by(WORKSITE_STATE) -> to_states
+
+salary <- ggplot(to_states, aes(x=reorder(WORKSITE_STATE,PREVAILING_WAGE,median),
+                                y=PREVAILING_WAGE))  +
+  geom_boxplot(fill="blue") + xlab("Job Title") + ylab("Salary in Dollars") +
+  get_theme() + coord_flip(ylim=c(0,150000))
+
+salary
+
+```
+**Conclusion : The analysis we performed above helps an aspirant understand the states he should be targeting in order to earn higher salaries and get his H1b application filed. As we can affirm from our results, the state of California has one the highest median salary amongst all states. The median salary of applicants applying from California is north of 100k dollars. The same in the case with the state with the second highest median salary i.e. Washington. The state with the least salary amongst state with highest amount of filings is Texas with a median salary in the range of 80-90k.**
+
+
+
+**9 H1b applicants geographical concentration?**
+
+Code:
+
+```{r}
+l <- list(color = toRGB("white"), width = 2)
+
+g <- list(scope = 'usa', projection = list(type = 'albers usa'), 
+          showlakes = TRUE, lakecolor = toRGB('white'))
+
+m <- list( l = 30, r = 30, b = 80,  t = 80,  pad = 5)
+
+employer_by_state <- plot_geo(df, locationmode = 'USA-states') %>%
+  add_trace(z = as.vector(sort(table(df$WORKSITE_STATE))), 
+            locations = names(sort(table(df$WORKSITE_STATE))), 
+            color = as.vector(sort(table(df$WORKSITE_STATE))), 
+            locations = names(table(df$WORKSITE_STATE)), 
+            colors = 'Reds') %>% 
+  colorbar(title = "Number of H1B") %>%  
+  layout(title = 'H1B Applications By State', geo = g,autosize = F)
+
+employer_by_state
+
+```
+**Conclusion : As we can affirm from our results that an aspirant is more likely to get an employer filing his H1b application if he or she applies for jobs in the states near the coasts. Most amount of H1b job applications take place on either of the coasts. This includes states such as California,New York, New Jersey etc. These states have a higher salary as compared to states in the middle like Texas as shown by our results in the previous question. Texas is a state in the middle of the country with the highest number of h1b visa applications.**
+
+**10 What is the geography based distribution of average wage per year for Software Engineering, Data Engineering and Data Science roles?**
+
+Code:
+
+```{r}
+h1b_df %>%
+    filter(JOB_TITLE %like% "^Software Engineer") %>%
+    filter(WORKSITE_STATE %in% unlist(state_wise_count)) %>%
+    group_by(WORKSITE_STATE) %>%
+    summarise(MEDIAN = median(PREVAILING_WAGE)) %>%
+    arrange(desc(MEDIAN)) -> median_software
+
+h1b_df %>%
+    filter(JOB_TITLE %like% "^data engineer") %>%
+    filter(WORKSITE_STATE %in% unlist(state_wise_count)) %>%
+    group_by(WORKSITE_STATE) %>%
+    summarise(MEDIAN = median(PREVAILING_WAGE)) %>%
+    arrange(desc(MEDIAN)) -> median_data_engineer
+
+h1b_df %>%
+    filter(JOB_TITLE %like% "^data scientist") %>%
+    filter(WORKSITE_STATE %in% unlist(state_wise_count)) %>%
+    group_by(WORKSITE_STATE) %>%
+    summarise(MEDIAN = median(PREVAILING_WAGE)) %>%
+    arrange(desc(MEDIAN)) -> median_data_scientist
+
+l <- list(color = toRGB("white"), width = 2)
+
+g <- list(scope = 'usa', projection = list(type = 'albers usa'), 
+          showlakes = TRUE, lakecolor = toRGB('white'))
+
+m <- list( l = 30, r = 30, b = 80,  t = 80,  pad = 5)
+ 
+
+plot_software = plot_geo(median_software, locationmode = 'USA-states') %>%
+    add_trace(
+        z = ~median_software$MEDIAN, color = ~median_software$MEDIAN, colors = 'Reds',
+        text = ~median_software$WORKSITE_STATE, locations = ~median_software$WORKSITE_STATE,
+        marker = list(line = l)) %>%
+    colorbar(title = 'Wage per year') %>%
+    layout(
+        title = 'Median wages for Software Engineers for all the states',
+        geo = g
+    )
+
+plot_data_engineer = plot_geo(median_data_engineer, locationmode = 'USA-states') %>%
+add_trace(
+z = ~median_data_engineer$MEDIAN, color = ~median_data_engineer$MEDIAN, colors = 'Blues',
+text = ~median_data_engineer$WORKSITE_STATE, locations = ~median_data_engineer$WORKSITE_STATE,
+marker = list(line = l)) %>%
+colorbar(title = 'Wage per year') %>%
+layout(
+title = 'Median wages for Data Engineers for all the states',
+geo = g)
+
+
+plot_data_scientist = plot_geo(median_data_scientist, locationmode = 'USA-states') %>%
+add_trace(
+z = ~median_data_scientist$MEDIAN, color = ~median_data_scientist$MEDIAN, colors = 'Oranges',
+text = ~median_data_scientist$WORKSITE_STATE, locations = ~median_data_scientist$WORKSITE_STATE, 
+marker = list(line = l)) %>%
+colorbar(title = 'Wage per year') %>%
+layout(
+title = 'Median wages for Data Scientists for all the states',
+geo = g
+)
+
+median_plot <- subplot(nrows =2, plot_software, plot_data_engineer, plot_data_scientist 
+              %>% layout(
+title = "Median wages for Software Engineers, Data Engineers and Data Scientists"))
+
+median_plot
+
+```
+
+**Conclusion : As we can observe from the plots an aspirant looking for well paid jobs in software and data science should most likely try and look for job opening in states like California, Texas, Washington, Connecticut and New York. These states are the hot spots for tech jobs for Software Engineering, Data Scientist and Data Engineering roles. Outliers in the graph include states such as Montana, Wyoming, South Dakota that do not have applications from such states for the roles listed above hence an aspirant should be applying for jobs in such states.** 

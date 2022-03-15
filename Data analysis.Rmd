@@ -1,0 +1,199 @@
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(ggmap)
+source("Usefull_functions.R")
+library(plotly)
+
+
+df<- read.csv("h1b_1.csv")
+
+
+#1 top employers?
+
+df %>%
+  filter(FULL_TIME_POSITION == 'Y') %>%
+  group_by(EMPLOYER_NAME) %>%
+  summarise(COUNT = n()) %>%
+  arrange(desc(COUNT)) -> common_jobs
+
+top_employers <- ggplot(common_jobs[1:15,], aes(x=reorder(EMPLOYER_NAME,COUNT),y=COUNT)) +
+  geom_bar(stat = "identity", fill = "Blue") + coord_flip() +
+  xlab("TOP EMPLOYERS") + ylab("NO. APPLICATIONS") + get_theme() + scale_color_discrete()
+
+top_employers
+
+# 2: What are the most common roles that employers apply for an H1-B visa application?
+
+top_employers <- unlist(find_top(df,"EMPLOYER_NAME","TotalApps",Ntop = 5))
+
+df %>%
+  filter(FULL_TIME_POSITION == 'Y') %>%
+  group_by(JOB_TITLE) %>%
+  summarise(COUNT = n()) %>%
+  arrange(desc(COUNT)) -> common_jobs
+
+common_roles <- ggplot(common_jobs[1:15,], aes(x=reorder(JOB_TITLE,COUNT),y=COUNT)) +
+  geom_bar(stat = "identity", fill = "red") + coord_flip() +
+  xlab("JOB TITLE") + ylab("TOTAL NOUMBER OF APPLICATIONS") + get_theme() + scale_color_discrete()
+
+common_roles
+
+
+
+# Q3) What is the distribution of the wages or salaries of the applications based on the roles?
+
+df%>%
+  filter(JOB_TITLE %in% unlist(common_jobs$JOB_TITLE[1:10])) %>%
+  group_by(JOB_TITLE) -> job_wages_df
+
+salary <- ggplot(job_wages_df, aes(x=reorder(JOB_TITLE,PREVAILING_WAGE,median),y=PREVAILING_WAGE)) +
+  geom_boxplot(fill="Blue") + xlab("JOB TITLE") + ylab("Salary in Dollars") +
+  get_theme() + coord_flip(ylim=c(0,150000))
+
+salary
+
+
+# Q4) #Describe in detail wage distribution of applicants applying for beginner jobs in the data domain?
+
+h1 <- plot_ly(x=df$PREVAILING_WAGE[df$JOB_TITLE == "Data Engineer"], type='histogram' ,nbinsx=100, color = "", colors = c("Green"), name="Data Engineer")
+h2 <- plot_ly(x=df$PREVAILING_WAGE[df$JOB_TITLE == "Data Scientist"], type='histogram' ,nbinsx=100, color = "", colors = c("Red"), name="Data Scientist")
+h3 <- plot_ly(x=df$PREVAILING_WAGE[df$JOB_TITLE == "Data Analyst"], type='histogram' ,nbinsx=100, color = "", colors = c("Orange"), name="Data Analyst")
+
+Dist_Sal <- subplot(nrows=2,h1,h2,h3) %>% layout(title = "Distribution of Salaries ")
+Dist_Sal
+
+
+# Q5) Describe the distribution of applicants based on the status of their application?
+
+plot_ly(df, labels = ~names(table(df$CASE_STATUS)), 
+        values = ~table(df$CASE_STATUS), type = 'pie',
+        textposition = 'inside',textinfo = 'label+percent') %>% layout(title = "Status of Applications",
+                                                                       xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE), yaxis = list(showgrid = FALSE,
+                                                                                                                                                              zeroline = FALSE, showticklabels = FALSE))
+
+# Q6) Describe the distribution of wages for applicants whose applications were either withdrawn,denied or certified and later withdrawn?
+
+library(plotly)
+
+#read cleaned dataset
+df<- read.csv("h1b_1.csv")
+
+
+h1 <- plot_ly(x=df$PREVAILING_WAGE[df$CASE_STATUS == "Denied"], type='histogram' ,nbinsx=100, color = "", colors = c("Red"), name="Denied")
+h2 <- plot_ly(x=df$PREVAILING_WAGE[df$CASE_STATUS == "Certified - Withdrawn"], type='histogram' ,nbinsx=100, color = "", colors = c("Orange"), name="Certified-Withdrawn")
+h3 <- plot_ly(x=df$PREVAILING_WAGE[df$CASE_STATUS == "Withdrawn"], type='histogram' ,nbinsx=100, color = "", colors = c("Black"), name="Withdrawn")
+
+Distribution <- subplot(nrows=1,h1,h2,h3) %>% layout(title = "Distribution of Salaries ")
+Distribution
+
+
+
+# Q7) Describe the distribution of H1b filings based on states?
+
+plot_ly(df, labels = ~names(table(df$WORKSITE_STATE)), 
+        values = ~table(df$WORKSITE_STATE), type = 'pie',
+        textposition = 'inside',textinfo = 'label+percent') %>% layout(title = "State Wise job distribution",
+                                                                       xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE), yaxis = list(showgrid = FALSE,
+                                                                                                                                                              zeroline = FALSE, showticklabels = FALSE))
+
+
+### Q8)H1b state wise median salary  of visa holders?
+
+df %>%
+  group_by(WORKSITE_STATE) %>%
+  summarise(COUNT = n()) %>%
+  arrange(desc(COUNT)) -> state_wise_count
+
+df%>%
+  filter(WORKSITE_STATE %in% unlist(state_wise_count$WORKSITE_STATE[1:5])) %>% 
+  group_by(WORKSITE_STATE) -> to_states
+
+wages <- ggplot(to_states, aes(x=reorder(WORKSITE_STATE,PREVAILING_WAGE,median),y=PREVAILING_WAGE)) +
+  geom_boxplot(fill="green") + xlab("JOB TITLE") + ylab("WAGEs IN USD") +
+  get_theme() + coord_flip(ylim=c(0,150000))
+
+wages
+
+### Q9)H1b geographical concentration of visa holders
+
+l <- list(color = toRGB("white"), width = 2)
+
+g <- list(scope = 'usa', projection = list(type = 'albers usa'), showlakes = TRUE, lakecolor = toRGB('white'))
+
+m <- list( l = 50, r = 50, b = 100,  t = 100,  pad = 4)
+
+employer_by_state <- plot_geo(df, locationmode = 'USA-states') %>%
+  add_trace(z = as.vector(sort(table(df$WORKSITE_STATE))), 
+            locations = names(sort(table(df$WORKSITE_STATE))), 
+            color = as.vector(sort(table(df$WORKSITE_STATE))), 
+            locations = names(table(df$WORKSITE_STATE)), 
+            colors = 'Reds') %>% 
+  colorbar(title = "Number of H1B") %>%  
+  layout(title = 'H1B Visa Applications By State', geo = g,autosize = F)
+
+employer_by_state
+
+### Q10) What is the distribution of average wage per year for Software Engineering, Data Engineering and Data Science roles?
+
+h1b_df %>%
+    filter(JOB_TITLE %like% "^Software Engineer") %>%
+    filter(WORKSITE_STATE %in% unlist(state_wise_count)) %>%
+    group_by(WORKSITE_STATE) %>%
+    summarise(MEDIAN = median(PREVAILING_WAGE)) %>%
+    arrange(desc(MEDIAN)) -> median_software
+
+h1b_df %>%
+    filter(JOB_TITLE %like% "^Data Engineer") %>%
+    filter(WORKSITE_STATE %in% unlist(state_wise_count)) %>%
+    group_by(WORKSITE_STATE) %>%
+    summarise(MEDIAN = median(PREVAILING_WAGE)) %>%
+    arrange(desc(MEDIAN)) -> median_data_engineer
+
+h1b_df %>%
+    filter(JOB_TITLE %like% "^Data Scientist") %>%
+    filter(WORKSITE_STATE %in% unlist(state_wise_count)) %>%
+    group_by(WORKSITE_STATE) %>%
+    summarise(MEDIAN = median(PREVAILING_WAGE)) %>%
+    arrange(desc(MEDIAN)) -> median_data_scientist
+
+l <- list(color = toRGB("white"), width = 2)
+
+g <- list(scope = 'usa', projection = list(type = 'albers usa'), showlakes = TRUE, lakecolor = toRGB('white'))
+
+m <- list( l = 30, r = 30, b = 80,  t = 80,  pad = 5)
+ 
+
+plot_software = plot_geo(median_software, locationmode = 'USA-states') %>%
+    add_trace(
+        z = ~median_software$MEDIAN, color = ~median_software$MEDIAN, colors = 'Reds',
+        text = ~median_software$WORKSITE_STATE, locations = ~median_software$WORKSITE_STATE, marker = list(line = l)) %>%
+    colorbar(title = 'Wage per year') %>%
+    layout(
+        title = 'Median wages for Software Engineers for all the states',
+        geo = g
+    )
+
+plot_data_engineer = plot_geo(median_data_engineer, locationmode = 'USA-states') %>%
+add_trace(
+z = ~median_data_engineer$MEDIAN, color = ~median_data_engineer$MEDIAN, colors = 'Blues',
+text = ~median_data_engineer$WORKSITE_STATE, locations = ~median_data_engineer$WORKSITE_STATE, marker = list(line = l)) %>%
+colorbar(title = 'Wage per year') %>%
+layout(
+title = 'Median wages for Data Engineers for all the states',
+geo = g)
+
+
+plot_data_scientist = plot_geo(median_data_scientist, locationmode = 'USA-states') %>%
+add_trace(
+z = ~median_data_scientist$MEDIAN, color = ~median_data_scientist$MEDIAN, colors = 'Oranges',
+text = ~median_data_scientist$WORKSITE_STATE, locations = ~median_data_scientist$WORKSITE_STATE, marker = list(line = l)) %>%
+colorbar(title = 'Wage per year') %>%
+layout(
+title = 'Median wages for Data Scientists for all the states',
+geo = g
+)
+
+median_plot <- subplot(nrows =2, plot_software, plot_data_engineer, plot_data_scientist %>% layout(title = "Median wages for Software Engineers, Data Engineers and Data Scientists"))
+
+median_plot
